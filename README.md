@@ -2,6 +2,9 @@
 
 A specialized travel assistant agent built with Databricks' Mosaic AI Agent Framework, designed to help users plan train journeys in Switzerland by accessing real-time train connections and station information through the Transport OpenData API.
 
+
+There is a blog about Buidling an AI agent transportation applications with Databricks that is based on this implementation and can be found [here](https://docs.google.com/document/d/1VgcfIYbvuIa_cjqyEnL6nlWsqLAd4_boWNjf2OuHmNw/edit?tab=t.0) 
+
 ## Project Overview
 
 This agent provides:
