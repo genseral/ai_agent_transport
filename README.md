@@ -1,194 +1,154 @@
 # AI Agent Transport
 
-This repository contains the implementation of a tool-calling agent designed to assist users in planning their travel by querying transportation APIs for train connections, station boards, and real-time updates. The agent is built using the Mosaic AI Agent Framework and integrates with Databricks and LangChain.
+A specialized travel assistant agent built with Databricks' Mosaic AI Agent Framework, designed to help users plan train journeys in Switzerland by accessing real-time train connections and station information through the Transport OpenData API.
+
+## Project Overview
+
+This agent provides:
+- Real-time train connection queries
+- Station departure/arrival board information
+- Support for multi-stop journey planning
+- Real-time updates and platform information
 
 ## Repository Structure
 
-- `export_full_agent_implementation.py` - Main driver notebook auto-generated from Databricks AI Playground export
-- `travel_agent.py` - Core agent implementation file
-- `system_prompt.txt` - System prompt for the agent defining its behavior and capabilities
-- `function_implementations.ipynb` - Notebook containing the Unity Catalog function implementations for train connections and station boards
-- `getting_started_agent_implementation.ipynb` - Example notebook showing basic agent usage
+### Core Files
+- `driver.py` - Main implementation notebook with agent testing, evaluation, and deployment
+- `system_prompt.txt` - Defines agent behavior and interaction parameters
+- `function_implementations.ipynb` - Unity Catalog function implementations
+- `README.md` - Project documentation
 
-## Table of Contents
+### Unity Catalog Functions
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Agent Logic](#agent-logic)
-- [Testing the Agent](#testing-the-agent)
-- [Logging and Deployment](#logging-and-deployment)
-- [Evaluation](#evaluation)
-- [Pre-deployment Validation](#pre-deployment-validation)
-- [Model Registration and Deployment](#model-registration-and-deployment)
-- [Next Steps](#next-steps)
-- [API Reference](#api-reference)
+Located in `travel_agents.train_agent` schema:
 
-## Prerequisites
+1. **get_connections**
+   ```python
+   def get_connections(
+       from_station: str,  # Departure station
+       to_station: str,    # Arrival station
+       via_station: str    # Optional intermediate stop
+   ) -> str:              # Returns JSON with connection details
+   ```
 
-- Databricks account
-- Python 3.8 or higher
-- Required Python packages (see `requirements.txt`)
+2. **get_station_board**
+   ```python
+   def get_station_board(
+       station: str,               # Target station
+       arrival_or_departure: str   # Board type selector
+   ) -> str:                      # Returns JSON with schedule data
+   ```
 
-## Installation
+## Setup & Installation
 
-To install the required Python packages, run the following command:
+### Prerequisites
+- Databricks workspace with MLflow access
+- Python 3.8+
+- Meta-Llama 3 70B Instruct model endpoint
 
+### Installation
 ```bash
-%pip install -U -qqqq mlflow langchain langgraph==0.3.4 databricks-langchain pydantic databricks-agents unitycatalog-langchain[databricks] uv
+%pip install -U -qqqq mlflow langchain langgraph==0.3.4 \
+    databricks-langchain pydantic databricks-agents \
+    unitycatalog-langchain[databricks] uv
 ```
 
-## Usage
+## Usage Examples
 
-### System Prompt
-
-The agent requires a system prompt that defines its behavior, capabilities, and limitations. This prompt is provided in the `system_prompt.txt` file and is automatically loaded by the agent implementation. The system prompt defines:
-
-- Purpose and limitations
-- Available parameters
-- Data sources and actions
-- Error handling behavior
-- Sample questions and scenarios
-
-### Define the Agent
-
-The agent is defined in the `travel_agent.py` file. It uses the `ChatDatabricks` model and integrates with Unity Catalog functions to retrieve train connections and station boards. The core functionality is implemented through two main functions:
-
-- `get_connections` - Retrieves train connections between stations
-- `get_station_board` - Gets departure/arrival information for a specific station
-
-These functions are implemented in the `function_implementations.ipynb` notebook and are registered in Unity Catalog for use by the agent.
-
-### Agent Logic
-
-The agent logic is implemented in the `create_tool_calling_agent` function, which binds the language model to the tools and defines the workflow for handling user messages and tool calls.
-
-### Testing the Agent
-
-You can test the agent by running the following commands in a Databricks notebook:
+### Basic Queries
 
 ```python
 from agent import AGENT
 
-AGENT.predict({"messages": [{"role": "user", "content": "Hello!"}]})
+# Find next connection
+response = AGENT.predict({
+    "messages": [{
+        "role": "user",
+        "content": "When is the next train from Zurich to Bern?"
+    }]
+})
+
+# Stream response for station board
+for chunk in AGENT.predict_stream({
+    "messages": [{
+        "role": "user",
+        "content": "Show me departures from Zurich HB"
+    }]
+}):
+    print(chunk)
 ```
 
-### Logging and Deployment
+### Sample Queries
+- "What are the train connections from Zurich to Bern today?"
+- "Show me the station board for Zurich HB"
+- "When is the next train leaving from Zurich HB?"
+- "I want to go from Zurich to Bern via Basel. What's available?"
 
-The agent can be logged as an MLflow model and deployed using the following commands:
+## Development & Deployment
 
+### Evaluation Setup
 ```python
-import mlflow
-from agent import tools, LLM_ENDPOINT_NAME
-from databricks_langchain import VectorSearchRetrieverTool
-from mlflow.models.resources import DatabricksFunction, DatabricksServingEndpoint
-from unitycatalog.ai.langchain.toolkit import UnityCatalogTool
-
-resources = [DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT_NAME)]
-for tool in tools:
-    if isinstance(tool, VectorSearchRetrieverTool):
-        resources.extend(tool.resources)
-    elif isinstance(tool, UnityCatalogTool):
-        resources.append(DatabricksFunction(function_name=tool.uc_function_name))
-
-input_example = {
-    "messages": [
-        {
-            "role": "user",
-            "content": "find the next train from zurich to bern?"
-        }
-    ]
-}
-
-with mlflow.start_run():
-    logged_agent_info = mlflow.pyfunc.log_model(
-        artifact_path="agent",
-        python_model="agent.py",
-        input_example=input_example,
-        pip_requirements=[
-            "mlflow",
-            "langchain",
-            "langgraph==0.3.4",
-            "databricks-langchain",
-            "unitycatalog-langchain[databricks]",
-            "pydantic",
-        ],
-        resources=resources,
-    )
-```
-
-### Evaluation
-
-Evaluate the agent using the `mlflow.evaluate` API:
-
-```python
-import pandas as pd
-
 eval_examples = [
     {
         "request": {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Find the next train from zurich to bern?"
-                }
-            ]
+            "messages": [{
+                "role": "user",
+                "content": "Find the next train from Zurich to Bern?"
+            }]
         },
         "expected_response": None
-    },
-    # Add more evaluation examples as needed
+    }
 ]
-
-eval_dataset = pd.DataFrame(eval_examples)
-
-import mlflow
-
-with mlflow.start_run(run_id=logged_agent_info.run_id):
-    eval_results = mlflow.evaluate(
-        f"runs:/{logged_agent_info.run_id}/agent",
-        data=eval_dataset,
-        model_type="databricks-agent",
-    )
-
-display(eval_results.tables['eval_results'])
 ```
 
-### Pre-deployment Validation
-
-Validate the agent before deployment:
-
-```python
-mlflow.models.predict(
-    model_uri=f"runs:/{logged_agent_info.run_id}/agent",
-    input_data={"messages": [{"role": "user", "content": "Hello!"}]},
-    env_manager="uv",
-)
-```
-
-### Model Registration and Deployment
-
-Register and deploy the model to Unity Catalog:
-
+### Model Registration
 ```python
 mlflow.set_registry_uri("databricks-uc")
-
-catalog = "travel_agents"
-schema = "train_agent"
-model_name = "train_travel_agent"
-UC_MODEL_NAME = f"{catalog}.{schema}.{model_name}"
-
-uc_registered_model_info = mlflow.register_model(
-    model_uri=logged_agent_info.model_uri, name=UC_MODEL_NAME
-)
-
-from databricks import agents
-agents.deploy(UC_MODEL_NAME, uc_registered_model_info.version, tags={"endpointSource": "playground"})
+UC_MODEL_NAME = "travel_agents.train_agent.train_travel_agent"
 ```
 
-### Next Steps
+### Deployment
+```python
+from databricks import agents
+agents.deploy(UC_MODEL_NAME, model_version, tags={"endpointSource": "playground"})
+```
 
-After deploying the agent, you can interact with it in the AI playground, share it with SMEs for feedback, or embed it in a production application.
+## Technical Details
 
-## API Reference
+### System Design
+- Uses LangGraph for agent orchestration
+- Implements MLflow's ChatAgent interface
+- Leverages Unity Catalog for function registration
+- Integrates with transport.opendata.ch API
 
-Link to the API used: [Transport Open Data](https://transport.opendata.ch/)
+### Limitations
+- Swiss train network only
+- No ticket booking capability
+- Maximum 15 entries per station board query
+- Real-time data subject to API availability
+
+### Error Handling
+- Clear messages for API failures
+- Informative responses for invalid stations
+- Graceful handling of missing connections
+- Real-time data availability notifications
+
+## API Integration
+
+Uses [Transport OpenData CH](https://transport.opendata.ch/) for:
+- Train timetables
+- Real-time departure/arrival information
+- Platform updates
+- Connection details
+
+## Contributing
+
+When adding features:
+1. Update system prompt for new capabilities
+2. Add corresponding Unity Catalog functions
+3. Include evaluation examples
+4. Update documentation
+
+## License
+
+Refer to project license file for terms of use.
