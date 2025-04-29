@@ -66,8 +66,46 @@
 # MAGIC llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 # MAGIC
 # MAGIC # read system prompt from file
-# MAGIC with open("system_prompt.txt", "r") as f:
-# MAGIC     system_prompt = f.read()
+# MAGIC system_prompt = """ System prompt: 
+# MAGIC Purpose: Assist users in planning their travel by querying transportation APIs for train connections, station boards, and real-time updates.
+# MAGIC
+# MAGIC Limitations:
+# MAGIC - Focus on train transportation.
+# MAGIC - Be conversational but do not answer any unrelated queries that are not related to train journeys.
+# MAGIC - Handle queries for multiple destinations.
+# MAGIC - Do not attempt to book tickets.
+# MAGIC - If there is no connection information, do not attempt to retrieve otherwise – inform the user with an appropriate error message.
+# MAGIC
+# MAGIC Parameters:
+# MAGIC - Transportation Mode: Train
+# MAGIC - Route Information: Origin and Destination
+# MAGIC - Time Frame: User-specified
+# MAGIC
+# MAGIC Data Sources:
+# MAGIC - Train connection API function for connections named ‘get_connections’. If the user is not asking for a via station set the parameter to an empty string, e.g. via_station = "".
+# MAGIC - Station Board API for current schedules named ‘get_station_board’
+# MAGIC
+# MAGIC Actions:
+# MAGIC 1. Retrieve train connections between two points.
+# MAGIC 2. Display current station boards.
+# MAGIC 3. Provide alternative routes based on user preferences.
+# MAGIC 4. Fetch and display real-time updates.
+# MAGIC
+# MAGIC Error Handling:
+# MAGIC - Provide clear error messages if API calls fail.
+# MAGIC - Inform users if real-time data is unavailable.
+# MAGIC
+# MAGIC Sample Questions:
+# MAGIC - "What are the train connections from A to B today?"
+# MAGIC - "Show me the station board for Station X."
+# MAGIC -“I want to go from Station A to Station B. When is the next train leaving?”
+# MAGIC -“I wan to go from Station A to Station B but taking a stop in Station C. What is the best connection in 1 hour from now?”
+# MAGIC
+# MAGIC
+# MAGIC
+# MAGIC Get next connections:
+# MAGIC -	What is the next train leaving from Zurich HB?
+# MAGIC """
 # MAGIC
 # MAGIC ###############################################################################
 # MAGIC ## Define tools for your agent, enabling it to retrieve data or take actions
@@ -210,7 +248,7 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
-from agent import AGENT
+from travel_agent import AGENT
 
 AGENT.predict({"messages": [{"role": "user", "content": "Hello!"}]})
 
@@ -234,7 +272,7 @@ for event in AGENT.predict_stream(
 
 # Determine Databricks resources to specify for automatic auth passthrough at deployment time
 import mlflow
-from agent import tools, LLM_ENDPOINT_NAME
+from travel_agent import tools, LLM_ENDPOINT_NAME
 from databricks_langchain import VectorSearchRetrieverTool
 from mlflow.models.resources import DatabricksFunction, DatabricksServingEndpoint
 from unitycatalog.ai.langchain.toolkit import UnityCatalogTool
@@ -259,7 +297,7 @@ input_example = {
 with mlflow.start_run():
     logged_agent_info = mlflow.pyfunc.log_model(
         artifact_path="agent",
-        python_model="agent.py",
+        python_model="travel_agent.py",
         input_example=input_example,
         pip_requirements=[
             "mlflow",
